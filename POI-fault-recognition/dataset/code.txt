@@ -1,0 +1,222 @@
+【data_processor.py】
+# -*- coding: utf-8 -*-
+"""
+Created on Fri Jul 17 10:42:18 2020
+
+@author: 陈宇
+"""
+
+
+import numpy as np
+import pandas as pd
+from sklearn.model_selection import train_test_split
+from sklearn.utils import shuffle
+from sklearn import preprocessing
+enc = preprocessing.OneHotEncoder()  #相关onehot的包
+
+#独热编码
+def set_OneHotEncoder(data,colname,start_index,end_index):
+    '''
+    Parameters
+    ----------
+    data : [[1,2,3,4,7],[0,5,6,8,9]]
+    start_index : 起始列位置索引
+    end_index : 结束列位置索引. 如start_index为1，end_index为3，则取出来的为[[2,3,4],[5,6,8]]
+    
+    Returns
+    -------
+    x_ : 对应列经过独热编码后的数据框
+    '''
+    if type(data) == pd.core.frame.DataFrame:
+        data = np.array(data).tolist()
+    if type(data) != list:
+        return  'Error dataType, expect list but ' + str(type(data))
+    _data,_colname =[line[:start_index] for line in data],colname[:start_index]
+    data_,colname_ = [line[end_index+1:] for line in data],colname[end_index+1:]
+    
+    data = [line[start_index:end_index+1] for line in data]
+    data = pd.DataFrame(data)
+    data.columns = colname[start_index:end_index+1]
+    enc.fit(data)
+    x_ = enc.transform(data).toarray() #已生成
+    x_ = [list(line) for line in x_]
+    #加栏目名
+    new_columns = []
+    for col in data.columns:
+        dd = sorted(list(set(list(data[col])))) #去重并根据升序排列
+        for line in dd:
+            new_columns.append(str(col)+'#'+str(line))
+ 
+    end_x = list(map(lambda x,y,z:x+y+z,_data,x_,data_))
+    end_columns = list(_colname)+new_columns+list(colname_)
+    x__ = pd.DataFrame(end_x,columns = end_columns)
+    return x__ #返回数据框形式
+
+
+#数据预处理
+def process(file_list, test_size=0.1):
+    '''
+    数据的读取和预处理.
+
+    Parameters
+    ----------
+    file_list : ['csv_file_path1', 'csv_file_path2', ...]
+    test_size : 测试集占数据集的比
+    
+    Returns
+    -------
+    train : 训练集数据框
+    test : 测试集数据框
+    '''
+    data = pd.concat([pd.read_csv(file) for file in file_list], ignore_index = True)
+    data.drop_duplicates(inplace=True)
+    data.fillna(0, inplace=True)
+    data['has_inf'] = data.has_inf.apply(lambda inf: 1 if inf else 0)
+    data['flg_type'] = data.flg_type.apply(lambda t: t // 100000)
+    data = shuffle(data)
+    data = set_OneHotEncoder(data, data.columns, 4, 4)
+    print(data.columns)
+    if test_size >= 0:
+        return train_test_split(data, test_size=test_size, random_state=21)
+    else:
+        return data
+
+
+【hparams.py】
+# -*- coding: utf-8 -*-
+"""
+Created on Fri Jul 17 11:43:15 2020
+
+@author: 陈宇
+"""
+
+params = {
+    'max_depth': -1,
+    'min_data_in_leaf': 20,
+    'min_sum_hessian_in_leaf': 1e-3,
+    'feature_fraction': 1,
+    'feature_fraction_seed': 2,
+    'bagging_fraction': 1,
+    'bagging_freq': 0,
+    'bagging_seed': 3,
+    'lambda_l1': 0,
+    'lambda_l2': 0,
+    'min_split_gain': 0,
+    'drop_rate': 0,
+    'skip_rate': 0.5,
+    'max_drop': 50,
+    'uniform_drop': False,
+    'xgboost_dart_mode': Fals e,
+    'drop_seed': 4,
+    'top_rate': 1,
+    'other_rate': 1,
+    'min_data_per_group': 100,
+    'max_cat_threshold': 32,
+    'cat_smooth': 10,
+    'cat_l2': 10,
+    'top_k ': 20    
+}
+
+num_boost_round = 1000
+early_stopping_round = 0
+pred_thread = 0.7
+
+
+【load_model.py】
+import lightgbm as lgb 
+import matplotlib.pylab as plt
+from data_processor import process
+
+
+
+gbm = lgb.Booster(model_file=r'pre_trained\model20200813.txt')
+#特征重要性分析
+for importance, name in sorted(zip(gbm.feature_importance(), gbm.feature_name()), reverse=True):
+    print(name, importance)
+plt.figure(figsize=(20,10))
+lgb.plot_importance(gbm, max_num_features=24)
+plt.title("Model20200715")
+plt.show()
+
+#用预训练好的模型进行预测
+test = process([r'dataset\TestDotsNonNoise.csv'], test_size=-1)
+drop_columns = ['dot_id', 'label', 'x', 'y', 'filter_code', 'has_filter_desc', 'filter_cfd']
+y_test = test.label
+X_test = test.drop(drop_columns, axis=1) 
+preds = gbm.predict(X_test, num_iteration=gbm.best_iteration)
+print(preds)
+print(y_test)
+
+
+【train.py】
+# -*- coding: utf-8 -*-
+"""
+Created on Fri Jul 17 11:34:06 2020
+
+@author: 陈宇
+"""
+
+
+import numpy as np
+import pandas as pd
+import lightgbm as lgb 
+from sklearn import metrics
+import sklearn
+from data_processor import process
+import hparams as hp
+
+train, test = process([r'dataset\AroundDotsNonNoise.csv',
+                   r'dataset\AroundDotsNonNoise2.csv',
+                   r'dataset\TrainDotsNoise.csv',
+                   r'dataset\TrainDotsNonNoise.csv',
+                   r'dataset\TestDotsNoise.csv',
+                   r'dataset\TrainDotsNoise2.csv',
+                   #r'dataset\TestDotsNonNoise.csv'
+                   ])
+
+drop_columns = ['dot_id', 'label', 'x', 'y', 'filter_code', 'has_filter_desc', 'filter_cfd']
+
+print("训练集")
+y = train.label                                                  # 训练集标签
+X = train.drop(drop_columns, axis=1)                  # 训练集特征矩阵
+
+print("测试集")
+offline_test_X=test.drop(drop_columns, axis=1) # 线下测试特征矩阵
+online_test_X=test.drop(['dot_id'], axis=1)              # 线上测试特征矩阵
+
+### 数据转换
+lgb_train = lgb.Dataset(X, y, free_raw_data=False)
+
+### 开始训练
+print('设置参数')
+params = hp.params
+#params = {}
+
+print("开始训练")
+gbm = lgb.train(params,                     
+                lgb_train,                  
+                num_boost_round=hp.num_boost_round,
+                #early_stopping_rounds=hp.early_stopping_round
+        )
+
+# ### 线下预测
+print("线下预测")
+preds_offline = gbm.predict(offline_test_X, num_iteration=gbm.best_iteration)
+offline = test[['dot_id','label']]
+preds_label = [1 if a > hp.pred_thread else 0 for a in preds_offline]
+print(offline)
+print(preds_offline)
+print(preds_label)
+offline['preds'] = preds_offline
+offline.label = offline['label'].astype(np.float64)
+print('log_loss', metrics.log_loss(offline.label, offline.preds))
+print('auc', metrics.roc_auc_score(offline.label, preds_offline))
+print("accuracy_score", metrics.accuracy_score(offline.label, preds_label))
+
+gbm.save_model("model.txt")
+
+res = pd.DataFrame({'dot_id':test['dot_id'], 'pred':preds_offline, 'label':test['label']})
+res.to_csv(r'ans.csv')
+
+classify_report = sklearn.metrics.classification_report(offline.label, preds_label)
+print(classify_report)
