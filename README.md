@@ -8,7 +8,14 @@ Geographic information of POI data can be divided into four categories:
 3. environment information: indicates the features of environment of POI.
 4. information inherited from image recognition methods.
 
-# GBDT-based classifier
+The geographic information of POI is extracted in a navigation map system, which finally constitutes the file train_data.csv. Some of the features and their names and descriptions are listed as follows:
+
+![image](https://github.com/chenyu-se/POI-fault-recognition/assets/17283947/433a7f6a-d83e-44d3-bb72-3f437bd64abf)
+
+# Activity diagram
+
+
+# Model
 The structure of the classifier is shown as follow:
 ![image](https://github.com/chenyu-se/POI-fault-recognition/assets/17283947/82b0eb15-a454-437f-b33e-256e59b0658e)
 
